@@ -1,23 +1,34 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Magecom\DeliveryMessage\Controller\Delivery;
 
 use Magento\Framework\App\Action\Action;
 use Magento\Framework\App\Action\Context;
 use Magento\Framework\Controller\ResultFactory;
 use Magecom\DeliveryMessage\Model\Customer;
+use Psr\Log\LoggerInterface;
 
 /**
  * Class Message
- * @package Magecom\DeliveryMessage\Controller\Delivery
  */
 class Message extends Action
 {
-    const SUCCESS_CODE = 200;
-    const ERROR_CODE = 500;
-    const MSG_SEPARATOR = 50000;
-    const TOMORROW_DELIVERY_MSG = 'We can deliver this product tomorrow!';
-    const AFTER_TOMORROW_DELIVERY_MSG = 'We can deliver this product after tomorrow!';
+    /**
+     * Success code
+     */
+    private const SUCCESS_CODE = 200;
+
+    /**
+     * Error code
+     */
+    private const ERROR_CODE = 500;
+
+    /**
+     * Message separator (for example only, can be replaced with array of Zip Codes and Messages relation)
+     */
+    private const MSG_SEPARATOR = 50000;
 
     /**
      * @var ResultFactory
@@ -30,6 +41,11 @@ class Message extends Action
     private $customer;
 
     /**
+     * @var LoggerInterface
+     */
+    private $logger;
+
+    /**
      * Message constructor.
      * @param Context $context
      * @param ResultFactory $resultFactory
@@ -38,43 +54,49 @@ class Message extends Action
     public function __construct(
         Context $context,
         ResultFactory $resultFactory,
-        Customer $customer
+        Customer $customer,
+        LoggerInterface $logger
     ) {
         parent::__construct($context);
         $this->resultFactory = $resultFactory;
         $this->customer = $customer;
+        $this->logger = $logger;
     }
 
     /**
+     * Getting message for customer according to received Zip Code
+     *
      * @return \Magento\Framework\App\ResponseInterface|\Magento\Framework\Controller\ResultInterface
      */
     public function execute()
     {
         $resultJson = $this->resultFactory->create(ResultFactory::TYPE_JSON);
         try{
-            if ($this->customer->zipCode() < self::MSG_SEPARATOR) {
-                $result = __(self::TOMORROW_DELIVERY_MSG);
-            } else {
-                $result = __(self::AFTER_TOMORROW_DELIVERY_MSG);
-            }
+
+            $result = ($this->customer->zipCode() < self::MSG_SEPARATOR) ? __('Deliver tomorrow!') : __('Deliver after tomorrow!');
 
             $responseContent = [
                 'success' => true,
                 'message' => $result
             ];
 
-            $resultJson->setHttpResponseCode(self::SUCCESS_CODE);
-            $resultJson->setData($responseContent);
+            $resultCode = self::SUCCESS_CODE;
 
-            return $resultJson;
         } catch (\Exception $e) {
+
             $responseContent = [
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => 'Something went wrong during getting delivery message'
             ];
-            $resultJson->setHttpResponseCode(self::ERROR_CODE);
-            $resultJson->setData($responseContent);
-            return $resultJson;
+
+            $resultCode = self::ERROR_CODE;
+
+            $this->logger->error('Error during showing delivery message on PDP: ' . $e->getMessage());
+
         }
+
+        $resultJson->setHttpResponseCode($resultCode);
+        $resultJson->setData($responseContent);
+        return $resultJson;
     }
 }
